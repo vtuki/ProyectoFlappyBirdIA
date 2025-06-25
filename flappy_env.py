@@ -181,7 +181,7 @@ class FlappyBirdEnv:
 
 
     def step(self, action):
-        reward = 0.1 # Recompensa pequeña por sobrevivir cada frame
+        reward = 1.0 # Recompensa pequeña por sobrevivir cada frame
         done = False
 
         # Actualizar el juego basado en la acción

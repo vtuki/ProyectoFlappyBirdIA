@@ -23,9 +23,10 @@ class DQNAgent:
     def _build_model(self):
         # Neural Net para aproximar la función Q
         model = Sequential()
-        model.add(Dense(24, input_dim=self.state_size, activation='relu'))
-        model.add(Dense(24, activation='relu'))
+        model.add(Dense(64, input_dim=self.state_size, activation='relu'))
+        model.add(Dense(64, activation='relu'))
         model.add(Dense(self.action_size, activation='linear')) # Salida lineal para valores Q
+        model.add(Dense(self.action_size, activation='linear'))
         model.compile(loss='mse', optimizer=Adam(learning_rate=self.learning_rate))
         return model
 
