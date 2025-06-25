@@ -19,10 +19,10 @@ if __name__ == "__main__":
 
     agent = DQNAgent(state_size, action_size)
 
-    # Opcional: cargar un modelo pre-entrenado
-    # if os.path.exists('models/flappy_bird_dqn.weights.h5'):
-    #     agent.load('models/flappy_bird_dqn.weights.h5')
-    #     print("Modelo cargado.")
+    # COMENTAR/NO COMENTAR: cargar un modelo pre-entrenado
+    if os.path.exists('models/flappy_bird_dqn.weights.h5'):
+         agent.load('models/flappy_bird_dqn.weights.h5')
+         print("Modelo cargado.")
 
 
     for e in range(EPISODES):
