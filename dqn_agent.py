@@ -14,7 +14,7 @@ class DQNAgent:
         self.gamma = 0.95    # Factor de descuento (qué tan importantes son las recompensas futuras)
         self.epsilon = 1.0   # Factor de exploración (probabilidad de tomar una acción aleatoria)
         self.epsilon_min = 0.01 # Mínimo de epsilon
-        self.epsilon_decay = 0.995 # Tasa de decaimiento de epsilon
+        self.epsilon_decay = 0.998 # Tasa de decaimiento de epsilon
         self.learning_rate = 0.001 # Tasa de aprendizaje
         self.model = self._build_model()
         self.target_model = self._build_model() # Target Network
