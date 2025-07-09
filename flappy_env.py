@@ -1,8 +1,9 @@
 import pygame, random, time
 from pygame.locals import *
 import numpy as np
+from sys import exit
 
-# VARIABLES (mantén las mismas que en tu flappy.py)
+# -- VARIABLES GLOBALES (Asegúrate de que sean las mismas que en flappy.py) --
 SCREEN_WIDHT = 400
 SCREEN_HEIGHT = 600
 SPEED = 20
@@ -17,19 +18,23 @@ PIPE_HEIGHT = 500
 
 PIPE_GAP = 150
 
-wing = 'assets/audio/wing.wav'
-hit = 'assets/audio/hit.wav'
-point = 'assets/audio/point.wav' # Añadido para recompensa
+# -- RUTAS DE AUDIOS --
+# Rutas de los archivos de audio
+wing_path = 'assets/audio/wing.wav'
+hit_path = 'assets/audio/hit.wav'
+point_path = 'assets/audio/point.wav'
 
 pygame.mixer.init()
 
-# Clases Bird, Pipe, Ground (Copia y pega las clases de tu flappy.py aquí)
+# -- SPRITES (Copiados directamente de flappy.py) --
 class Bird(pygame.sprite.Sprite):
     def __init__(self):
         pygame.sprite.Sprite.__init__(self)
-        self.images =  [pygame.image.load('assets/sprites/bluebird-upflap.png').convert_alpha(),
-                        pygame.image.load('assets/sprites/bluebird-midflap.png').convert_alpha(),
-                        pygame.image.load('assets/sprites/bluebird-downflap.png').convert_alpha()]
+        self.images =  [
+            pygame.image.load('assets/sprites/bluebird-upflap.png').convert_alpha(),
+            pygame.image.load('assets/sprites/bluebird-midflap.png').convert_alpha(),
+            pygame.image.load('assets/sprites/bluebird-downflap.png').convert_alpha()
+        ]
         self.speed = SPEED
         self.current_image = 0
         self.image = pygame.image.load('assets/sprites/bluebird-upflap.png').convert_alpha()
@@ -42,7 +47,7 @@ class Bird(pygame.sprite.Sprite):
         self.current_image = (self.current_image + 1) % 3
         self.image = self.images[self.current_image]
         self.speed += GRAVITY
-        self.rect[1] += self.speed
+        self.rect[1] += self.speed # El índice [1] es la coordenada Y
 
     def bump(self):
         self.speed = -SPEED
@@ -64,6 +69,9 @@ class Pipe(pygame.sprite.Sprite):
         else:
             self.rect[1] = SCREEN_HEIGHT - ysize
         self.mask = pygame.mask.from_surface(self.image)
+        # No se necesita el atributo 'passed' si la recompensa es solo por supervivencia
+        # Si quieres recompensa por pasar tuberías, deberás añadirlo aquí y en step()
+        # self.passed = False # Si quieres mantener la recompensa por pasar tuberías
 
     def update(self):
         self.rect[0] -= GAME_SPEED
@@ -81,6 +89,7 @@ class Ground(pygame.sprite.Sprite):
     def update(self):
         self.rect[0] -= GAME_SPEED
 
+# -- FUNCIONES AUXILIARES (Copiadas de flappy.py) --
 def is_off_screen(sprite):
     return sprite.rect[0] < -(sprite.rect[2])
 
@@ -90,7 +99,7 @@ def get_random_pipes(xpos):
     pipe_inverted = Pipe(True, xpos, SCREEN_HEIGHT - size - PIPE_GAP)
     return pipe, pipe_inverted
 
-
+# -- ENTORNO FLAPPY BIRD PARA EL AGENTE --
 class FlappyBirdEnv:
     def __init__(self):
         pygame.init()
@@ -101,7 +110,20 @@ class FlappyBirdEnv:
         self.BACKGROUND = pygame.transform.scale(self.BACKGROUND, (SCREEN_WIDHT, SCREEN_HEIGHT))
 
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.Font(None, 50)  # Para mostrar el score
+        self.font = pygame.font.Font(None, 50)
+
+        # Cargar sonidos una sola vez al inicio para optimizar
+        self.wing_sound = pygame.mixer.Sound(wing_path)
+        self.hit_sound = pygame.mixer.Sound(hit_path)
+        self.point_sound = pygame.mixer.Sound(point_path)
+
+        # Atributos de la clase para las constantes
+        self.SCREEN_WIDHT = SCREEN_WIDHT
+        self.SCREEN_HEIGHT = SCREEN_HEIGHT
+        self.SPEED = SPEED
+        self.PIPE_GAP = PIPE_GAP
+        self.GROUND_WIDHT = GROUND_WIDHT
+        self.GAME_SPEED = GAME_SPEED
 
         self.reset()
 
@@ -112,149 +134,132 @@ class FlappyBirdEnv:
 
         self.ground_group = pygame.sprite.Group()
         for i in range (2):
-            ground = Ground(GROUND_WIDHT * i)
+            ground = Ground(self.GROUND_WIDHT * i)
             self.ground_group.add(ground)
 
         self.pipe_group = pygame.sprite.Group()
-        for i in range (2):
-            pipes = get_random_pipes(SCREEN_WIDHT * i + 300) # Ajustado para que las tuberías no empiecen tan lejos
-            self.pipe_group.add(pipes[0])
-            self.pipe_group.add(pipes[1])
-        
+        # Generar tuberías para que el agente tenga objetivos
+        pipes1 = get_random_pipes(SCREEN_WIDHT + 200)
+        self.pipe_group.add(pipes1[0])
+        self.pipe_group.add(pipes1[1])
+
+        pipes2 = get_random_pipes(SCREEN_WIDHT + 200 + SCREEN_WIDHT // 2)
+        self.pipe_group.add(pipes2[0])
+        self.pipe_group.add(pipes2[1])
+
         self.score = 0
         self.game_over = False
         return self._get_state()
 
     def _get_state(self):
-        # Define tu estado aquí. Esto es crucial para el aprendizaje.
-        # Un buen estado debe contener toda la información relevante para tomar una decisión.
-        # Ejemplo de estado:
-        # [bird_y, bird_speed, dist_to_next_pipe_x, next_pipe_top_y, next_pipe_bottom_y]
+        """
+        Calcula el estado del juego de forma más robusta y simple,
+        usando posiciones relativas y coordenadas absolutas normalizadas para las tuberías.
+        """
 
-        # Encontrar la próxima tubería
-        next_pipe = None
-        for pipe in self.pipe_group.sprites():
-            if pipe.rect[0] + pipe.rect[2] > self.bird.rect[0]:  # Si la tubería está delante del pájaro
-                if next_pipe is None or pipe.rect[0] < next_pipe.rect[0]:
-                    next_pipe = pipe
-        
-        # Necesitamos la tubería superior e inferior para el mismo par
-        next_pipe_top_y = 0
-        next_pipe_bottom_y = 0
-        dist_to_next_pipe_x = SCREEN_WIDHT # Valor por defecto si no hay tuberías
+        pipes_in_front = [p for p in self.pipe_group.sprites() if p.rect.right > self.bird.rect.left]
+        pipes_in_front.sort(key=lambda p: p.rect.x)
 
-        if next_pipe:
-            # Asumimos que la primera tubería es la de arriba o abajo
-            # Para encontrar el par, podrías necesitar una lógica más robusta
-            # Por simplicidad, asumamos que las tuberías se agregan en pares ordenados
-            pipes_in_order = sorted(self.pipe_group.sprites(), key=lambda p: p.rect[0])
-            for i, p in enumerate(pipes_in_order):
-                if p is next_pipe:
-                    # Encuentra el otro pipe del par (puede ser el anterior o el siguiente)
-                    if i > 0 and pipes_in_order[i-1].rect[0] == p.rect[0]:
-                        if pipes_in_order[i-1].rect[1] < p.rect[1]: # si el anterior es el top
-                            next_pipe_top_y = pipes_in_order[i-1].rect[1] + pipes_in_order[i-1].rect[3] # bottom of top pipe
-                            next_pipe_bottom_y = p.rect[1] # top of bottom pipe
-                        else: # si el anterior es el bottom
-                            next_pipe_top_y = p.rect[1] + p.rect[3]
-                            next_pipe_bottom_y = pipes_in_order[i-1].rect[1]
-                    elif i < len(pipes_in_order) - 1 and pipes_in_order[i+1].rect[0] == p.rect[0]:
-                        if pipes_in_order[i+1].rect[1] < p.rect[1]: # si el siguiente es el top
-                            next_pipe_top_y = pipes_in_order[i+1].rect[1] + pipes_in_order[i+1].rect[3]
-                            next_pipe_bottom_y = p.rect[1]
-                        else: # si el siguiente es el bottom
-                            next_pipe_top_y = p.rect[1] + p.rect[3]
-                            next_pipe_bottom_y = pipes_in_order[i+1].rect[1]
-                    
-                    dist_to_next_pipe_x = next_pipe.rect[0] - self.bird.rect[0]
-                    break
-        
-        # Normaliza los valores para que estén en un rango similar
-        state = [
-            self.bird.rect[1] / SCREEN_HEIGHT, # bird_y (0 a 1)
-            self.bird.speed / SPEED, # bird_speed (relativo a la velocidad máxima de salto/caída)
-            dist_to_next_pipe_x / SCREEN_WIDHT, # dist_to_next_pipe_x (0 a 1)
-            next_pipe_top_y / SCREEN_HEIGHT, # next_pipe_top_y (0 a 1)
-            next_pipe_bottom_y / SCREEN_HEIGHT # next_pipe_bottom_y (0 a 1)
-        ]
-        return np.array(state, dtype=np.float32)
+        # Valores por defecto si no hay tuberías visibles
+        dist_to_next_pipe_x = self.SCREEN_WIDHT # Distancia horizontal a la pared derecha si no hay tuberías
+        next_pipe_top_y = 0                     # Borde superior de la pantalla
+        next_pipe_bottom_y = self.SCREEN_HEIGHT # Borde inferior de la pantalla
 
+        if pipes_in_front:
+            first_pipe_x = pipes_in_front[0].rect.x
+            current_pipe_pair = [p for p in pipes_in_front if p.rect.x == first_pipe_x]
+
+            if len(current_pipe_pair) == 2:
+                # Identifica cuál es la superior y cuál es la inferior
+                if current_pipe_pair[0].rect.y < current_pipe_pair[1].rect.y:
+                    top_pipe = current_pipe_pair[0]
+                    bottom_pipe = current_pipe_pair[1]
+                else:
+                    top_pipe = current_pipe_pair[1]
+                    bottom_pipe = current_pipe_pair[0]
+
+                dist_to_next_pipe_x = top_pipe.rect.x - self.bird.rect.x
+                next_pipe_top_y = top_pipe.rect.y + top_pipe.rect.height
+                next_pipe_bottom_y = bottom_pipe.rect.y
+            else: 
+                # Este caso debería ser raro si las tuberías se generan en pares.
+                # Asume que el hueco está a la altura media si solo se ve una tubería.
+                dist_to_next_pipe_x = pipes_in_front[0].rect.x - self.bird.rect.x
+                if pipes_in_front[0].rect.y < self.SCREEN_HEIGHT / 2: # Probablemente una tubería superior
+                    next_pipe_top_y = pipes_in_front[0].rect.y + pipes_in_front[0].rect.height
+                    next_pipe_bottom_y = next_pipe_top_y + self.PIPE_GAP
+                else: # Probablemente una tubería inferior
+                    next_pipe_bottom_y = pipes_in_front[0].rect.y
+                    next_pipe_top_y = next_pipe_bottom_y - self.PIPE_GAP
+
+        # Normalizamos los valores para que estén en un rango similar
+        state = np.array([
+            self.bird.rect.y / self.SCREEN_HEIGHT,                     # Posición Y del pájaro (0 a 1)
+            self.bird.speed / self.SPEED,                              # Velocidad vertical del pájaro (normalizada por la velocidad de salto)
+            dist_to_next_pipe_x / self.SCREEN_WIDHT,                  # Distancia horizontal a la siguiente tubería (0 a 1)
+            next_pipe_top_y / self.SCREEN_HEIGHT,                     # Coordenada Y de la parte superior del hueco (0 a 1)
+            next_pipe_bottom_y / self.SCREEN_HEIGHT                   # Coordenada Y de la parte inferior del hueco (0 a 1)
+        ], dtype=np.float32)
+
+        return state
 
     def step(self, action):
         reward = 1.0 # Recompensa pequeña por sobrevivir cada frame
         done = False
 
-        # Actualizar el juego basado en la acción
-        for event in pygame.event.get():
-            if event.type == QUIT:
-                pygame.quit()
-                exit()
-        
         if action == 1: # Si la acción es saltar
             self.bird.bump()
-            pygame.mixer.music.load(wing)
-            pygame.mixer.music.play()
+            self.wing_sound.play()
 
+        # Actualizar la posición de los sprites
         self.bird_group.update()
         self.ground_group.update()
         self.pipe_group.update()
 
-        # Generar nuevas tuberías y suelo
+        # Generar nuevos elementos del juego
         if is_off_screen(self.ground_group.sprites()[0]):
             self.ground_group.remove(self.ground_group.sprites()[0])
             new_ground = Ground(GROUND_WIDHT - 20)
             self.ground_group.add(new_ground)
 
-        # Manejo de tuberías: si se salen de la pantalla, se quitan y se añaden nuevas
-        # También se otorga recompensa si se pasa una tubería
+        # Manejo de tuberías (removido la lógica de recompensa específica por pasar tuberías para simplificar,
+        # siguiendo el ejemplo funcional que solo recompensa por supervivencia + penalización por colisión)
         pipes_to_remove = []
-        passed_pipe_in_this_step = False
         for pipe in self.pipe_group.sprites():
             if is_off_screen(pipe):
                 pipes_to_remove.append(pipe)
-            # Recompensa por pasar una tubería
-            # La lógica para esto es un poco más compleja ya que las tuberías vienen en pares
-            # Y no queremos recompensar dos veces por el mismo par.
-            # Una forma es verificar si el centro del pájaro ha pasado el centro de la tubería inferior.
-            if pipe.rect[0] + pipe.rect[2] < self.bird.rect[0] and not hasattr(pipe, 'passed'):
-                # Asegurarse de que es la tubería inferior del par
-                other_pipe = None
-                for p_other in self.pipe_group.sprites():
-                    if p_other.rect[0] == pipe.rect[0] and p_other is not pipe:
-                        other_pipe = p_other
-                        break
-                
-                if other_pipe and pipe.rect[1] > other_pipe.rect[1]: # Si 'pipe' es la tubería inferior
-                    reward += 10 # Recompensa por pasar
-                    pygame.mixer.music.load(point) # Sonido de punto
-                    pygame.mixer.music.play()
-                    pipe.passed = True # Marcar la tubería como pasada
-                    other_pipe.passed = True
-                    passed_pipe_in_this_step = True
-                    self.score += 1 # Aumentar el score
+            # Si quieres añadir recompensa por pasar tuberías,
+            # necesitas reintroducir el atributo 'passed' en la clase Pipe y la lógica aquí.
+            # Ejemplo:
+            # if not hasattr(pipe, 'passed'): # Si no tiene el atributo, lo inicializamos
+            #     pipe.passed = False
+            # if not pipe.passed and self.bird.rect.left > pipe.rect.right:
+            #     # Lógica para evitar doble recompensa por par de tuberías y sumar puntos
+            #     # ... (la lógica anterior que tenías)
+            #     self.score += 1
+            #     self.point_sound.play()
 
+
+        # Eliminar las tuberías que se han salido de la pantalla
         for pipe in pipes_to_remove:
             self.pipe_group.remove(pipe)
-        
-        # Si se quitaron todas las tuberías de un par, añadir nuevas
+
+        # Si se han quitado tuberías, añadir nuevas
         if len(self.pipe_group) < 4: # Suponiendo que siempre hay 2 pares visibles (4 tuberías)
             pipes = get_random_pipes(SCREEN_WIDHT * 2) # Aparecen más lejos para no solaparse
             self.pipe_group.add(pipes[0])
             self.pipe_group.add(pipes[1])
 
-
         # Detección de colisiones
         if (pygame.sprite.groupcollide(self.bird_group, self.ground_group, False, False, pygame.sprite.collide_mask) or
             pygame.sprite.groupcollide(self.bird_group, self.pipe_group, False, False, pygame.sprite.collide_mask) or
-            self.bird.rect[1] < 0): # También si el pájaro sale por arriba
-            reward = -100 # Gran penalización por chocar
+            self.bird.rect.y < 0): # También si el pájaro sale por arriba
+            reward = -100 # Penalización por chocar (revertido a -100 para coincidir con el ejemplo funcional)
             done = True
             self.game_over = True
-            pygame.mixer.music.load(hit)
-            pygame.mixer.music.play()
-            # time.sleep(1) # No pausar el juego durante el entrenamiento automático
+            self.hit_sound.play() # Usa el objeto Sound pre-cargado
 
-        # Dibujar en pantalla (solo para visualización durante el entrenamiento)
+        # Dibujar en pantalla (visualización)
         self.screen.blit(self.BACKGROUND, (0, 0))
         self.bird_group.draw(self.screen)
         self.pipe_group.draw(self.screen)
@@ -264,12 +269,12 @@ class FlappyBirdEnv:
         score_text = self.font.render(str(self.score), True, (255, 255, 255))
         self.screen.blit(score_text, (SCREEN_WIDHT // 2 - score_text.get_width() // 2, 50))
 
-
         pygame.display.update()
-        self.clock.tick(GAME_SPEED) # Controla la velocidad de simulación
+        self.clock.tick(GAME_SPEED)
 
         next_state = self._get_state()
-        return next_state, reward, done, {} # El último diccionario es para información adicional
+        return next_state, reward, done, {}
 
     def close(self):
         pygame.quit()
+        exit()
