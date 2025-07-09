@@ -1,6 +1,5 @@
-import pygame # Añadido para el manejo de eventos de Pygame
-import sys    # Añadido para sys.exit
-import numpy as np # Necesario para operaciones numéricas
+import gymnasium as gym
+import numpy as np
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -9,36 +8,36 @@ import random
 import torch
 from torch import nn
 import yaml
-import os
 
-# Importa las clases de otros archivos del proyecto
 from experience_replay import ReplayMemory
 from dqn import DQN
-from flappy_env import FlappyBirdEnv # Importa tu entorno Flappy Bird
 
 from datetime import datetime, timedelta
 import argparse
 import itertools
+
+# Importar la nueva clase de entorno FlappyBirdEnv desde la carpeta flappy_gym_env
+from flappy_gym_env.flappy_bird_env import FlappyBirdEnv
+
+import os
 
 # Para imprimir fecha y hora
 DATE_FORMAT = "%m-%d %H:%M:%S"
 
 # Directorio para guardar información de las ejecuciones
 RUNS_DIR = "runs"
-os.makedirs(RUNS_DIR, exist_ok=True) # Crea el directorio si no existe
+os.makedirs(RUNS_DIR, exist_ok=True)
 
-# 'Agg': usado para generar gráficos como imágenes y guardarlos en un archivo en lugar de renderizarlos en pantalla
+# 'Agg': utilizado para generar gráficos como imágenes y guardarlos en un archivo en lugar de renderizarlos en pantalla
 matplotlib.use('Agg')
 
-# Configura el dispositivo (CUDA para GPU si está disponible, de lo contrario CPU)
-# Forzar CPU si es necesario, a veces la GPU no es más rápida debido a la sobrecarga de mover datos.
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-# device = 'cpu' # Descomenta para forzar CPU
+# device = 'cpu' # forzar CPU, a veces la GPU no es más rápida que la CPU debido a la sobrecarga de mover datos a la GPU
 
 # Agente de Deep Q-Learning
 class Agent():
+
     def __init__(self, hyperparameter_set):
-        # Cargar hiperparámetros desde el archivo YAML
         with open('hyperparameters.yml', 'r') as file:
             all_hyperparameter_sets = yaml.safe_load(file)
             hyperparameters = all_hyperparameter_sets[hyperparameter_set]
@@ -47,250 +46,294 @@ class Agent():
         self.hyperparameter_set = hyperparameter_set
 
         # Hiperparámetros (ajustables)
-        self.env_id             = hyperparameters['env_id']          # ID del entorno
-        self.learning_rate_a    = hyperparameters['learning_rate_a'] # Tasa de aprendizaje (alpha)
-        self.discount_factor_g  = hyperparameters['discount_factor_g'] # Factor de descuento (gamma)
-        self.network_sync_rate  = hyperparameters['network_sync_rate'] # Frecuencia de sincronización de la red objetivo
-        self.replay_memory_size = hyperparameters['replay_memory_size'] # Tamaño de la memoria de replay
-        self.mini_batch_size    = hyperparameters['mini_batch_size'] # Tamaño del mini-lote
-        self.epsilon_init       = hyperparameters['epsilon_init']    # Epsilon inicial (1 = 100% acciones aleatorias)
-        self.epsilon_decay      = hyperparameters['epsilon_decay']   # Tasa de decaimiento de epsilon
-        self.epsilon_min        = hyperparameters['epsilon_min']     # Valor mínimo de epsilon
-        self.stop_on_reward     = hyperparameters['stop_on_reward']  # Detener entrenamiento al alcanzar esta recompensa
-        self.fc1_nodes          = hyperparameters['fc1_nodes']       # Nodos en la primera capa
-        # Parámetros opcionales específicos del entorno, por defecto diccionario vacío
-        self.env_make_params    = hyperparameters.get('env_make_params',{}) 
-        self.enable_double_dqn  = hyperparameters['enable_double_dqn'] # Bandera Double DQN
-        self.enable_dueling_dqn = hyperparameters['enable_dueling_dqn'] # Bandera Dueling DQN
+        self.env_id             = hyperparameters['env_id']
+        self.learning_rate_a    = hyperparameters['learning_rate_a']        # Tasa de aprendizaje (alpha)
+        self.discount_factor_g  = hyperparameters['discount_factor_g']      # Factor de descuento (gamma)
+        self.network_sync_rate  = hyperparameters['network_sync_rate']      # Tasa de sincronización de la red target
+        self.replay_memory_size = hyperparameters['replay_memory_size']     # Tamaño de la memoria de repetición
+        self.mini_batch_size    = hyperparameters['mini_batch_size']        # Tamaño del mini-batch para el entrenamiento
+        self.epsilon_init       = hyperparameters['epsilon_init']           # Valor inicial de epsilon
+        self.epsilon_decay      = hyperparameters['epsilon_decay']          # Tasa de decaimiento de epsilon
+        self.epsilon_min        = hyperparameters['epsilon_min']            # Valor mínimo de epsilon
+        self.stop_on_reward     = hyperparameters['stop_on_reward']         # Detener entrenamiento si la recompensa supera este valor
+        self.fc1_nodes          = hyperparameters['fc1_nodes']              # Número de nodos en la primera capa oculta
+        self.env_make_params    = hyperparameters.get('env_make_params', {}) # Parámetros adicionales para la creación del entorno
 
-        # Red Neuronal
-        self.loss_fn = nn.MSELoss()          # Función de pérdida NN (MSE)
-        self.optimizer = None                # Optimizador NN. Se inicializa más tarde.
+        # Habilitar Dueling DQN y Double DQN
+        self.enable_double_dqn  = hyperparameters.get('enable_double_dqn', False)
+        self.enable_dueling_dqn = hyperparameters.get('enable_dueling_dqn', False)
 
-        # Rutas para información de la ejecución
-        self.LOG_FILE   = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.log')
-        self.MODEL_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.pt')
-        self.GRAPH_FILE = os.path.join(RUNS_DIR, f'{self.hyperparameter_set}.png')
+        # Inicializar render_mode para el entorno
+        self.render_mode = None # Se establecerá en __main__
 
-    # Método para ejecutar el agente (entrenamiento o prueba)
-    def run(self, is_training=True, render=False):
-        if is_training:
-            start_time = datetime.now()
-            last_graph_update_time = start_time
+        # Crear el entorno Flappy Bird (ahora usando la versión Gymnasium)
+        # Se pasa render_mode y los parámetros adicionales del entorno.
+        # El entorno se cerrará y recreará en el main si el render_mode cambia.
+        self.env = FlappyBirdEnv(render_mode=self.render_mode, **self.env_make_params)
 
-            log_message = f"{start_time.strftime(DATE_FORMAT)}: Iniciando entrenamiento..."
-            print(log_message)
-            with open(self.LOG_FILE, 'w') as file:
-                file.write(log_message + '\n')
+        # Obtener el tamaño del espacio de estado y acción del entorno Gymnasium
+        # El estado de esta versión del entorno es de 12 dimensiones por defecto sin LIDAR.
+        self.num_states = self.env.observation_space.shape[0]
+        self.num_actions = self.env.action_space.n
 
-        # Crear instancia del entorno Flappy Bird
-        # NOTA: Tu FlappyBirdEnv no es un entorno Gymnasium estándar,
-        # así que lo instanciamos directamente.
-        env = FlappyBirdEnv()
+        # Inicializar el buffer de repetición de experiencias
+        self.memory = ReplayMemory(self.replay_memory_size)
 
-        # Número de posibles acciones (saltar o no saltar)
-        num_actions = 2 # env.action_space.n # Tu env no tiene action_space.n directamente
+        # Inicializar las redes DQN (política y target)
+        self.policy_dqn = DQN(
+            self.num_states,
+            self.num_actions,
+            hidden_dim=self.fc1_nodes,
+            enable_dueling_dqn=self.enable_dueling_dqn
+        ).to(device)
+        self.target_dqn = DQN(
+            self.num_states,
+            self.num_actions,
+            hidden_dim=self.fc1_nodes,
+            enable_dueling_dqn=self.enable_dueling_dqn
+        ).to(device)
+        
+        # Sincronizar las redes al inicio
+        self.target_dqn.load_state_dict(self.policy_dqn.state_dict())
+        self.target_dqn.eval() # Poner la red target en modo evaluación
 
-        # Obtener el tamaño del espacio de observación (estado)
-        num_states = env._get_state().shape[0] # Tu env usa _get_state().shape[0]
+        # Optimizador y función de pérdida
+        self.optimizer = torch.optim.Adam(
+            self.policy_dqn.parameters(),
+            lr=self.learning_rate_a
+        )
+        self.loss_fn = nn.MSELoss() # O nn.HuberLoss() para mayor estabilidad
 
-        # Lista para seguir las recompensas recolectadas por episodio.
-        rewards_per_episode = []
+        # Inicializar epsilon
+        self.epsilon = self.epsilon_init
 
-        # Crear la red de políticas y la red objetivo.
-        policy_dqn = DQN(num_states, num_actions, self.fc1_nodes, self.enable_dueling_dqn).to(device)
+        # Para gráficos y guardar el modelo
+        self.run_dir = os.path.join(
+            RUNS_DIR,
+            f"run_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{self.hyperparameter_set}"
+        )
+        os.makedirs(self.run_dir, exist_ok=True)
+        self.scores = []
+        self.avg_scores = []
+        self.epsilons = []
 
-        if is_training:
-            # Inicializar epsilon
-            epsilon = self.epsilon_init
-
-            # Inicializar la memoria de replay
-            memory = ReplayMemory(self.replay_memory_size)
-
-            # Crear la red objetivo y hacerla idéntica a la red de políticas
-            target_dqn = DQN(num_states, num_actions, self.fc1_nodes, self.enable_dueling_dqn).to(device)
-            target_dqn.load_state_dict(policy_dqn.state_dict())
-
-            # Optimizador de la red de políticas (Adam)
-            self.optimizer = torch.optim.Adam(policy_dqn.parameters(), lr=self.learning_rate_a)
-
-            # Lista para seguir el decaimiento de epsilon
-            epsilon_history = []
-
-            # Contador de pasos. Usado para sincronizar política => red objetivo.
-            step_count = 0
-
-            # Mejor recompensa (para guardar el mejor modelo)
-            best_reward = -9999999
+    def choose_action(self, state):
+        # Epsilon-greedy para la exploración
+        if random.random() < self.epsilon:
+            return random.randrange(self.num_actions)
         else:
-            # Cargar la política aprendida
-            policy_dqn.load_state_dict(torch.load(self.MODEL_FILE))
+            # Seleccionar la acción con el valor Q más alto
+            with torch.no_grad():
+                # Convertir el estado de numpy a tensor de PyTorch
+                state_tensor = torch.from_numpy(state).float().unsqueeze(0).to(device)
+                q_values = self.policy_dqn(state_tensor)
+                return torch.argmax(q_values).item()
 
-            # Cambiar el modelo a modo de evaluación (deshabilita dropout, batch norm, etc.)
-            policy_dqn.eval()
+    def train(self, num_episodes):
+        start_time = datetime.now()
+        for episode in range(1, num_episodes + 1):
+            # Reiniciar el entorno y obtener el estado inicial
+            # El método reset de Gymnasium devuelve observación e info
+            observation, info = self.env.reset()
+            state = observation # El estado inicial es la observación
 
-        # Entrenar INDEFINIDAMENTE, detén la ejecución manualmente cuando estés satisfecho
-        for episode in itertools.count():
+            terminated = False # Indicador de finalización del episodio
+            truncated = False  # Indicador de truncamiento del episodio (por ejemplo, límite de tiempo)
+            total_reward = 0
+            score = 0 # El score real del juego, se obtendrá de info['score']
 
-            state = env.reset() # Inicializar entorno.
-            state = torch.tensor(state, dtype=torch.float, device=device) # Convertir estado a tensor en el dispositivo
+            # Bucle del episodio
+            while not terminated and not truncated:
+                # Elegir una acción
+                action = self.choose_action(state)
 
-            terminated = False      # True cuando el agente alcanza la meta o falla
-            truncated = False       # (Tu env no usa 'truncated', pero se mantiene por compatibilidad si lo añades)
-            episode_reward = 0.0    # Acumulador de recompensas por episodio
+                # Ejecutar la acción en el entorno
+                # El método step de Gymnasium devuelve obs, reward, terminated, truncated, info
+                next_observation, reward, terminated, truncated, info = self.env.step(action)
+                next_state = next_observation
+                
+                # Obtener el score real del juego desde la información del entorno
+                score = info['score']
 
-            # Realizar acciones hasta que el episodio termine o alcance la recompensa máxima
-            while(not terminated and not truncated and episode_reward < self.stop_on_reward):
-                # ===> MANEJO DE EVENTOS DE PYGAME (¡CRUCIAL!) <===
-                # Este bucle DEBE estar aquí para que la ventana de Pygame responda.
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        env.close()
-                        sys.exit()
+                # Almacenar la experiencia en el buffer de repetición
+                self.memory.append((state, action, reward, next_state, terminated))
 
-                # Seleccionar acción basada en la estrategia epsilon-greedy
-                if is_training and random.random() < epsilon:
-                    action = random.randrange(num_actions) # Seleccionar acción aleatoria
-                    action = torch.tensor(action, dtype=torch.int64, device=device)
-                else:
-                    # Seleccionar la mejor acción
-                    with torch.no_grad(): # No calcular gradientes para la inferencia
-                        # state.unsqueeze(dim=0): PyTorch espera una dimensión de lote, así que la añadimos
-                        q_values = policy_dqn(state.unsqueeze(dim=0)).squeeze()
-                        action = q_values.argmax() # Encontrar el índice del elemento más grande (la mejor acción)
+                # Actualizar el estado actual
+                state = next_state
+                total_reward += reward
 
-                # Ejecutar acción en el entorno
-                new_state, reward, terminated, info = env.step(action.item()) # Tu env no devuelve 'truncated'
+                # Entrenar la red DQN si hay suficientes experiencias en el buffer
+                if len(self.memory) > self.mini_batch_size:
+                    self.replay()
+            
+            # Decaer epsilon
+            if self.epsilon > self.epsilon_min:
+                self.epsilon *= self.epsilon_decay
+            
+            # Sincronizar la red target cada cierto número de episodios
+            if episode % self.network_sync_rate == 0:
+                self.target_dqn.load_state_dict(self.policy_dqn.state_dict())
+                self.target_dqn.eval()
+                print(f"Episodio {episode}: Red target sincronizada.")
 
-                # Acumular recompensas
-                episode_reward += reward
+            # Guardar resultados para gráficos
+            self.scores.append(score) # Guardar el score real del juego
+            self.epsilons.append(self.epsilon)
+            
+            # Calcular la media de los últimos 100 episodios
+            self.avg_scores.append(np.mean(self.scores[-100:]))
 
-                # Convertir nuevo estado y recompensa a tensores en el dispositivo
-                new_state = torch.tensor(new_state, dtype=torch.float, device=device)
-                reward = torch.tensor(reward, dtype=torch.float, device=device)
+            # Imprimir progreso
+            print(f"Episodio {episode}/{num_episodes} | Score: {score} | Recompensa Total: {total_reward:.2f} | Epsilon: {self.epsilon:.4f} | Memoria: {len(self.memory)} | Avg Score (100 episodios): {self.avg_scores[-1]:.2f}")
 
-                if is_training:
-                    # Guardar experiencia en la memoria
-                    memory.append((state, action, new_state, reward, terminated))
-
-                    # Incrementar contador de pasos
-                    step_count += 1
-
-                # Mover al siguiente estado
-                state = new_state
-
-            # Guardar la recompensa total del episodio
-            rewards_per_episode.append(episode_reward)
-
-            # Guardar el modelo cuando se obtiene una nueva mejor recompensa.
-            if is_training:
-                if episode_reward > best_reward:
-                    log_message = (f"{datetime.now().strftime(DATE_FORMAT)}: Nueva mejor recompensa {episode_reward:0.1f} "
-                                   f"({(episode_reward-best_reward)/abs(best_reward)*100:+.1f}%) en el episodio {episode}, guardando modelo...")
-                    print(log_message)
-                    with open(self.LOG_FILE, 'a') as file:
-                        file.write(log_message + '\n')
-
-                    torch.save(policy_dqn.state_dict(), self.MODEL_FILE)
-                    best_reward = episode_reward
-
-
-                # Actualizar gráfico cada X segundos
-                current_time = datetime.now()
-                if current_time - last_graph_update_time > timedelta(seconds=10):
-                    self.save_graph(rewards_per_episode, epsilon_history)
-                    last_graph_update_time = current_time
-
-                # Si se ha recolectado suficiente experiencia (más que el tamaño del mini-lote)
-                if len(memory) > self.mini_batch_size:
-                    mini_batch = memory.sample(self.mini_batch_size)
-                    self.optimize(mini_batch, policy_dqn, target_dqn)
-
-                    # Decaer epsilon
-                    epsilon = max(epsilon * self.epsilon_decay, self.epsilon_min)
-                    epsilon_history.append(epsilon)
-
-                    # Copiar la red de políticas a la red objetivo después de cierto número de pasos
-                    if step_count > self.network_sync_rate:
-                        target_dqn.load_state_dict(policy_dqn.state_dict())
-                        step_count = 0
-
-            # Imprimir el progreso del episodio
-            print(f"Episodio {episode} | Recompensa: {episode_reward:.1f} | Epsilon: {epsilon:.4f} | Memoria: {len(memory)}")
+            # Guardar el modelo cada 50 episodios
+            if episode % 50 == 0:
+                self.save_model(os.path.join(self.run_dir, f"dqn_model_episode_{episode}.pth"))
+                self.save_plots(episode)
+            
+            # Condición de parada si se alcanza una recompensa alta
+            if self.avg_scores[-1] >= self.stop_on_reward and self.stop_on_reward != 100000:
+                print(f"¡Recompensa media objetivo alcanzada! Entrenamiento detenido en el episodio {episode}.")
+                break
+        
+        end_time = datetime.now()
+        total_time = end_time - start_time
+        print(f"Entrenamiento completado en {total_time}.")
+        self.save_model(os.path.join(self.run_dir, "dqn_model_final.pth"))
+        self.save_plots(num_episodes)
 
 
-    # Guarda los gráficos de rendimiento
-    def save_graph(self, rewards_per_episode, epsilon_history):
-        fig = plt.figure(1)
+    def replay(self):
+        # Si la memoria es menor que el tamaño del mini-batch, no hacemos replay
+        if len(self.memory) < self.mini_batch_size:
+            return
 
-        # Graficar recompensas promedio (eje Y) vs episodios (eje X)
-        mean_rewards = np.zeros(len(rewards_per_episode))
-        for x in range(len(mean_rewards)):
-            mean_rewards[x] = np.mean(rewards_per_episode[max(0, x-99):(x+1)]) # Promedio de las últimas 100 recompensas
-        plt.subplot(121) # Gráfica en una cuadrícula de 1 fila x 2 columnas, en la celda 1
-        plt.xlabel('Episodios')
-        plt.ylabel('Recompensas Promedio')
-        plt.plot(mean_rewards)
+        # Muestrear un mini-batch de la memoria de repetición
+        mini_batch = self.memory.sample(self.mini_batch_size)
+        
+        # Desempaquetar el mini-batch
+        states, actions, rewards, next_states, dones = zip(*mini_batch)
 
-        # Graficar decaimiento de epsilon (eje Y) vs episodios (eje X)
-        plt.subplot(122) # Gráfica en una cuadrícula de 1 fila x 2 columnas, en la celda 2
-        plt.xlabel('Episodios')
-        plt.ylabel('Decaimiento de Epsilon')
-        plt.plot(epsilon_history)
+        # Convertir a tensores de PyTorch
+        states = torch.tensor(np.array(states), dtype=torch.float32).to(device)
+        actions = torch.tensor(np.array(actions), dtype=torch.int64).to(device)
+        rewards = torch.tensor(np.array(rewards), dtype=torch.float32).to(device)
+        next_states = torch.tensor(np.array(next_states), dtype=torch.float32).to(device)
+        dones = torch.tensor(np.array(dones), dtype=torch.bool).to(device)
 
-        plt.subplots_adjust(wspace=1.0, hspace=1.0) # Ajustar espaciado entre subgráficas
+        # Calcular Q-valores para los estados actuales usando la red de política
+        current_q_values = self.policy_dqn(states).gather(1, actions.unsqueeze(1)).squeeze()
 
-        # Guardar gráficos
-        fig.savefig(self.GRAPH_FILE)
-        plt.close(fig) # Cierra la figura para liberar memoria
-
-
-    # Optimizar la red de políticas
-    def optimize(self, mini_batch, policy_dqn, target_dqn):
-        # Transponer la lista de experiencias y separar cada elemento
-        states, actions, new_states, rewards, terminations = zip(*mini_batch)
-
-        # Apilar tensores para crear tensores de lote
-        states = torch.stack(states)
-        actions = torch.stack(actions)
-        new_states = torch.stack(new_states)
-        rewards = torch.stack(rewards)
-        terminations = torch.tensor(terminations).float().to(device)
-
-        with torch.no_grad(): # No calcular gradientes para el cálculo del Q objetivo
+        # Calcular los Q-valores objetivo
+        with torch.no_grad():
             if self.enable_double_dqn:
-                # Double DQN: Usa la red de política para seleccionar la mejor acción en el siguiente estado,
-                # y la red objetivo para estimar su valor Q.
-                best_actions_from_policy = policy_dqn(new_states).argmax(dim=1)
-
-                target_q = rewards + (1 - terminations) * self.discount_factor_g * \
-                                target_dqn(new_states).gather(dim=1, index=best_actions_from_policy.unsqueeze(dim=1)).squeeze()
+                # Double DQN: Usar la política para elegir la mejor acción futura
+                # y la target network para evaluar esa acción.
+                next_action_from_policy = self.policy_dqn(next_states).argmax(dim=1).unsqueeze(1)
+                next_q_values = self.target_dqn(next_states).gather(1, next_action_from_policy).squeeze()
             else:
-                # DQN estándar: Calcula los valores Q objetivo (retornos esperados)
-                target_q = rewards + (1 - terminations) * self.discount_factor_g * target_dqn(new_states).max(dim=1)[0]
+                # DQN estándar: Usar el máximo Q-valor de la target network
+                next_q_values = self.target_dqn(next_states).max(1)[0] # [0] para obtener los valores máximos
 
-        # Calcular los valores Q de la política actual
-        current_q = policy_dqn(states).gather(dim=1, index=actions.unsqueeze(dim=1)).squeeze()
+            # Calcular los Q-valores esperados (target)
+            # Si el episodio terminó (done es True), el Q-valor objetivo es solo la recompensa
+            # De lo contrario, es recompensa + gamma * Q_siguiente_máximo
+            target_q_values = rewards + (self.discount_factor_g * next_q_values * (~dones))
 
-        # Calcular la pérdida (Error Cuadrático Medio)
-        loss = self.loss_fn(current_q, target_q)
-
-        # Optimizar el modelo (retropropagación)
-        self.optimizer.zero_grad()  # Limpiar gradientes
+        # Calcular la pérdida y realizar la retropropagación
+        loss = self.loss_fn(current_q_values, target_q_values)
+        
+        self.optimizer.zero_grad() # Limpiar gradientes
         loss.backward()             # Calcular gradientes
-        self.optimizer.step()       # Actualizar los parámetros de la red (pesos y sesgos)
+        # Opcional: Recortar gradientes para evitar el problema de "exploding gradients"
+        # torch.nn.utils.clip_grad_norm_(self.policy_dqn.parameters(), max_norm=1.0)
+        self.optimizer.step()       # Actualizar los parámetros de la red
 
-# Punto de entrada del script
+    def save_model(self, path):
+        torch.save(self.policy_dqn.state_dict(), path)
+        print(f"Modelo guardado en {path}")
+
+    def load_model(self, path):
+        self.policy_dqn.load_state_dict(torch.load(path, map_location=device))
+        self.target_dqn.load_state_dict(torch.load(path, map_location=device))
+        self.policy_dqn.eval()
+        self.target_dqn.eval()
+        print(f"Modelo cargado desde {path}")
+
+    def save_plots(self, episode):
+        # Plotting scores
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.scores, label='Score por Episodio')
+        plt.plot(self.avg_scores, label='Media de Scores (últimos 100 episodios)', color='red')
+        plt.xlabel('Episodio')
+        plt.ylabel('Score')
+        plt.title(f'Rendimiento del Agente DQN - {self.hyperparameter_set} (Episodio {episode})')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(self.run_dir, f'scores_episode_{episode}.png'))
+        plt.close()
+
+        # Plotting epsilon decay
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.epsilons, label='Valor de Epsilon', color='green')
+        plt.xlabel('Episodio')
+        plt.ylabel('Epsilon')
+        plt.title(f'Decaimiento de Epsilon - {self.hyperparameter_set} (Episodio {episode})')
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(os.path.join(self.run_dir, f'epsilon_decay_episode_{episode}.png'))
+        plt.close()
+
+
 if __name__ == '__main__':
-    # Parsear argumentos de línea de comandos
-    parser = argparse.ArgumentParser(description='Entrenar o probar modelo.')
-    parser.add_argument('hyperparameters', help='Nombre del conjunto de hiperparámetros del archivo hyperparameters.yml (e.g., flappybird1)')
+    # Parsear entradas de línea de comandos
+    parser = argparse.ArgumentParser(description='Entrenar o probar el modelo.')
+    parser.add_argument('hyperparameters', help='Nombre del conjunto de hiperparámetros del archivo hyperparameters.yml')
     parser.add_argument('--train', help='Modo de entrenamiento', action='store_true')
+    parser.add_argument('--test', help='Modo de prueba (requiere --model_path)', action='store_true')
+    parser.add_argument('--model_path', help='Ruta al archivo del modelo .pth para cargar')
+    parser.add_argument('--episodes', type=int, default=5000, help='Número de episodios para entrenar')
+    parser.add_argument('--render', help='Renderizar el entorno durante la ejecución', action='store_true') # Nuevo argumento para renderizado
     args = parser.parse_args()
 
-    dql = Agent(hyperparameter_set=args.hyperparameters)
+    agent = Agent(hyperparameter_set=args.hyperparameters)
+
+    # Configurar el render_mode del agente
+    if args.render:
+        agent.render_mode = "human"
+    else:
+        agent.render_mode = None # Desactivar renderizado por defecto
+
+    # Re-crear el entorno con el render_mode correcto
+    # Esto es importante porque el render_mode se usa en la inicialización del entorno
+    agent.env.close() # Cerrar el entorno anterior si existe
+    agent.env = FlappyBirdEnv(render_mode=agent.render_mode, **agent.env_make_params)
 
     if args.train:
-        dql.run(is_training=True)
+        print(f"Iniciando entrenamiento con hiperparámetros: {args.hyperparameters}")
+        agent.train(num_episodes=args.episodes)
+    elif args.test:
+        if not args.model_path:
+            print("ERROR: El modo de prueba requiere --model_path para cargar un modelo.")
+        else:
+            print(f"Cargando modelo desde: {args.model_path} para prueba.")
+            agent.load_model(args.model_path)
+            print(f"Iniciando prueba con hiperparámetros: {args.hyperparameters}")
+            # Para el modo de prueba, puedes ejecutar algunos episodios y renderizarlos
+            test_episodes = 5 # Por ejemplo, 5 episodios de prueba
+            for i in range(test_episodes):
+                observation, info = agent.env.reset()
+                state = observation
+                terminated = False
+                truncated = False
+                total_reward = 0
+                while not terminated and not truncated:
+                    action = agent.choose_action(state) # Usar el modelo cargado
+                    next_observation, reward, terminated, truncated, info = agent.env.step(action)
+                    state = next_observation
+                    total_reward += reward
+                    if agent.render_mode:
+                        agent.env.render() # Renderizar cada paso
+                print(f"Prueba - Episodio {i+1} | Score: {info['score']} | Recompensa Total: {total_reward:.2f}")
     else:
-        dql.run(is_training=False, render=True)
+        parser.print_help()
