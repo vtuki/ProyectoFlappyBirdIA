@@ -4,9 +4,9 @@ from pygame.locals import *
 #VARIABLES
 SCREEN_WIDHT = 400
 SCREEN_HEIGHT = 600
-SPEED = 20
-GRAVITY = 2.5
-GAME_SPEED = 15
+SPEED = 10
+GRAVITY = 0.625
+GAME_SPEED = 3.75
 
 GROUND_WIDHT = 2 * SCREEN_WIDHT
 GROUND_HEIGHT= 100
@@ -41,9 +41,10 @@ class Bird(pygame.sprite.Sprite):
         self.rect[0] = SCREEN_WIDHT / 6
         self.rect[1] = SCREEN_HEIGHT / 2
 
-    def update(self):
-        self.current_image = (self.current_image + 1) % 3
-        self.image = self.images[self.current_image]
+    def update(self, i):
+        if (i%4 == 0):
+            self.current_image = (self.current_image + 1) % 3
+            self.image = self.images[self.current_image]
         self.speed += GRAVITY
 
         #UPDATE HEIGHT
@@ -52,9 +53,10 @@ class Bird(pygame.sprite.Sprite):
     def bump(self):
         self.speed = -SPEED
 
-    def begin(self):
-        self.current_image = (self.current_image + 1) % 3
-        self.image = self.images[self.current_image]
+    def begin(self, i):
+        if (i%4 == 0):
+            self.current_image = (self.current_image + 1) % 3
+            self.image = self.images[self.current_image]
 
 
 
@@ -141,9 +143,11 @@ clock = pygame.time.Clock()
 
 begin = True
 
+i = 0
+
 while begin:
 
-    clock.tick(15)
+    clock.tick(60)
 
     for event in pygame.event.get():
         if event.type == QUIT:
@@ -164,7 +168,7 @@ while begin:
         new_ground = Ground(GROUND_WIDHT - 20)
         ground_group.add(new_ground)
 
-    bird.begin()
+    bird.begin(i)
     ground_group.update()
 
     bird_group.draw(screen)
@@ -172,10 +176,13 @@ while begin:
 
     pygame.display.update()
 
+    i+=1
 
+
+i = 0
 while True:
 
-    clock.tick(15)
+    clock.tick(60)
 
     for event in pygame.event.get():
         if event.type == QUIT:
@@ -203,7 +210,7 @@ while True:
         pipe_group.add(pipes[0])
         pipe_group.add(pipes[1])
 
-    bird_group.update()
+    bird_group.update(i)
     ground_group.update()
     pipe_group.update()
 
@@ -212,6 +219,8 @@ while True:
     ground_group.draw(screen)
 
     pygame.display.update()
+
+    i+=1
 
     if (pygame.sprite.groupcollide(bird_group, ground_group, False, False, pygame.sprite.collide_mask) or
             pygame.sprite.groupcollide(bird_group, pipe_group, False, False, pygame.sprite.collide_mask)):
