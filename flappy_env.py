@@ -3,7 +3,7 @@ from pygame.locals import *
 import numpy as np
 from sys import exit
 
-# -- VARIABLES GLOBALES (Asegúrate de que sean las mismas que en flappy.py) --
+# -- VARIABLES GLOBALES --
 SCREEN_WIDHT = 400
 SCREEN_HEIGHT = 600
 SPEED = 20
@@ -26,7 +26,7 @@ point_path = 'assets/audio/point.wav'
 
 pygame.mixer.init()
 
-# -- SPRITES (Copiados directamente de flappy.py) --
+# -- SPRITES  --
 class Bird(pygame.sprite.Sprite):
     def __init__(self):
         pygame.sprite.Sprite.__init__(self)
@@ -69,8 +69,8 @@ class Pipe(pygame.sprite.Sprite):
         else:
             self.rect[1] = SCREEN_HEIGHT - ysize
         self.mask = pygame.mask.from_surface(self.image)
-        # No se necesita el atributo 'passed' si la recompensa es solo por supervivencia
-        # Si quieres recompensa por pasar tuberías, deberás añadirlo aquí y en step()
+        # No necesito el atributo 'passed' si la recompensa es solo por supervivencia
+        # Si quiero recompensa por pasar tuberías, añadirlo aquí y en step()
         # self.passed = False # Si quieres mantener la recompensa por pasar tuberías
 
     def update(self):
@@ -89,7 +89,7 @@ class Ground(pygame.sprite.Sprite):
     def update(self):
         self.rect[0] -= GAME_SPEED
 
-# -- FUNCIONES AUXILIARES (Copiadas de flappy.py) --
+# -- FUNCIONES AUXILIARES  --
 def is_off_screen(sprite):
     return sprite.rect[0] < -(sprite.rect[2])
 

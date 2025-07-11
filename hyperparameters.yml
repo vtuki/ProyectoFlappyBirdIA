@@ -18,10 +18,10 @@ flappybird1:
   replay_memory_size: 100000 # Tamaño del buffer de experiencia (memoria de replay)
   mini_batch_size: 32 # Tamaño del mini-lote para el entrenamiento
   epsilon_init: 1 # Valor inicial de epsilon (exploración)
-  epsilon_decay: 0.99995 # Tasa de decaimiento de epsilon
+  epsilon_decay: 0.999 # Tasa de decaimiento de epsilon
   epsilon_min: 0.05 # Valor mínimo de epsilon
   network_sync_rate: 10 # Frecuencia de sincronización de la red objetivo (cada cuántos pasos)
-  learning_rate_a: 0.0001 # Tasa de aprendizaje (alfa)
+  learning_rate_a: 0.0005 # Tasa de aprendizaje (alfa)
   discount_factor_g: 0.99 # Factor de descuento (gamma)
   stop_on_reward: 100000 # Detener entrenamiento al alcanzar esta recompensa (valor alto para no detener)
   fc1_nodes: 512 # Número de nodos en la primera capa completamente conectada (fc1)
