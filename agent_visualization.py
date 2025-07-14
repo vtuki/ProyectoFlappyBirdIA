@@ -21,7 +21,7 @@ bird_group = pygame.sprite.Group()
 
 episodes = 100000
 
-path = "models/qtable18Pipes779Score.pkl"
+path = "models/qtable123Pipes-40ScoreBEST.pkl"
 if VIEWING_MODE:
     agent.load(path)
 
@@ -33,7 +33,7 @@ for episode in range(episodes):
     tuberias_superadas = 0
 
     while not done:
-        clock.tick(60)  # Baja la velocidad si quieres observarlo más lentamente
+        clock.tick(120)  # Baja la velocidad si quieres observarlo más lentamente
 
         # Cerrar la ventana si el usuario la cierra
         for event in pygame.event.get():
@@ -42,7 +42,11 @@ for episode in range(episodes):
                 exit()
 
         # Elegir acción con Q-learning
-        action = agent.choose_action(state)
+        if (not VIEWING_MODE):
+            action = agent.choose_action(state)
+        else:
+            action = agent.choose_action(state, True)
+
         action_done = action
         if (not state_changed):
             action_done = 0
