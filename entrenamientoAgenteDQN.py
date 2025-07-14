@@ -19,7 +19,7 @@ if OVER_TRAIN:
     except Exception as e:
         print(f"Could not load model: {e}. Starting fresh training.")
 
-episodes = 2000 # Reduced for quicker testing, increase for better training
+episodes = 1000 # Reduced for quicker testing, increase for better training
 
 max_surpassed_pipes = 0
 mean_score = 0
