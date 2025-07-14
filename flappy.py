@@ -4,11 +4,13 @@ from pygame.locals import *
 #VARIABLES
 SCREEN_WIDHT = 400
 SCREEN_HEIGHT = 600
-SPEED = 10
-GRAVITY = 0.625
-GAME_SPEED = 3.75
+FPS = 60
 
-GROUND_WIDHT = 2 * SCREEN_WIDHT
+SPEED = 6
+GRAVITY = 0.3
+GAME_SPEED = 4
+
+GROUND_WIDHT = 3 * SCREEN_WIDHT
 GROUND_HEIGHT= 100
 
 PIPE_WIDHT = 80
@@ -147,7 +149,7 @@ def main():
 
     while begin:
 
-        clock.tick(60)
+        clock.tick(FPS)
 
         for event in pygame.event.get():
             if event.type == QUIT:
@@ -182,7 +184,7 @@ def main():
     i = 0
     while True:
 
-        clock.tick(60)
+        clock.tick(FPS)
 
         for event in pygame.event.get():
             if event.type == QUIT:
