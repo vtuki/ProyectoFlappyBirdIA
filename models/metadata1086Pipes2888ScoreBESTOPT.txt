@@ -1,0 +1,8 @@
+alpha: 0.04
+gamma: 0.9
+epsilon: 0
+episodes: 10000
+factor_discretizacion_x: 20
+factor_discretizacion_y: 40
+factores_estado: dx, dy
+boosted: Si

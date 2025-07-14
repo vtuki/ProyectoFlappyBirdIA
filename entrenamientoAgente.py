@@ -5,11 +5,12 @@ from entornoFlappy import FACTOR_DISCRETIZACION_X, FACTOR_DISCRETIZACION_Y
 env = FlappyEnv()
 agent = QAgent()
 
-OVER_TRAIN = False
+OVER_TRAIN = True
 
-path = "qtable.pkl"
+path = "models/qtable123Pipes-40ScoreBEST.pkl"
 if OVER_TRAIN:
     agent.load(path)
+    agent.epsilon = 0
 
 episodes = 10000
 
@@ -60,5 +61,8 @@ for episode in range(episodes):
 
 mean_score /= episodes
 agent.save(f"models/qtable{max_surpassed_pipes}Pipes{round(mean_score)}Score.pkl")
-agent.saveMetaData(episodes, FACTOR_DISCRETIZACION_X, FACTOR_DISCRETIZACION_Y, f"models/metadata{max_surpassed_pipes}Pipes{round(mean_score)}Score.txt")
+if OVER_TRAIN:
+    agent.saveMetaData(episodes, FACTOR_DISCRETIZACION_X, FACTOR_DISCRETIZACION_Y, f"models/metadata{max_surpassed_pipes}Pipes{round(mean_score)}Score.txt", True)
+else:
+    agent.saveMetaData(episodes, FACTOR_DISCRETIZACION_X, FACTOR_DISCRETIZACION_Y, f"models/metadata{max_surpassed_pipes}Pipes{round(mean_score)}Score.txt")
 print(f"Máxima cantidad de tuberias superadas: {max_surpassed_pipes}, Score medio: {mean_score}")

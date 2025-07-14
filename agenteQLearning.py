@@ -5,9 +5,9 @@ import pickle
 class QAgent:
     def __init__(self):
         self.q_table = {}
-        self.alpha = 0.15
+        self.alpha = 0.04
         self.gamma = 0.9
-        self.epsilon = 0.5  # Probabilidad de explorar
+        self.epsilon = 0.3  # Probabilidad de explorar
         self.initial_epsilon = self.epsilon
 
     def get_q(self, state, action):
@@ -40,7 +40,7 @@ class QAgent:
         with open(path, "rb") as f:
             self.q_table = pickle.load(f)
 
-    def saveMetaData(self, episodes, factor_disc_x, factor_disc_y, path="models/metadata.txt"):
+    def saveMetaData(self, episodes, factor_disc_x, factor_disc_y, path="models/metadata.txt", boosted=False):
         metadata = {
             "alpha": self.alpha,
             "gamma": self.gamma,
@@ -50,6 +50,10 @@ class QAgent:
             "factor_discretizacion_y": factor_disc_y,
             "factores_estado": "dx, dy",
         }
+        if boosted:
+            metadata["boosted"] = "Si"
+        else:
+            metadata["boosted"] = "No"
         with open(path, "w") as f:
             for k, v in metadata.items():
                 f.write(f"{k}: {v}\n")
