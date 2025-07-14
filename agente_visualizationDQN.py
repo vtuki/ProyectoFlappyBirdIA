@@ -44,7 +44,7 @@ for episode in range(episodes):
     done = False
     
     while not done:
-        clock.tick(60)  # Adjust speed for observation
+        clock.tick(120)  # Adjust speed for observation
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
