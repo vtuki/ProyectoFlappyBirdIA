@@ -23,7 +23,7 @@ bird_group = pygame.sprite.Group()
 
 episodes = 100 # Reduced for visualization
 
-path = "models/model_dqn_best.h5" # Path to the trained model
+path = "models/model_dqn_pipes_13.h5" # Path to the trained model
 if VIEWING_MODE:
     try:
         agent.load(path)
